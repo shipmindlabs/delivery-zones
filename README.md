@@ -65,6 +65,24 @@ zone.is_open_at(datetime(2026, 8, 24, 10, 0))    # True, a Monday morning
 Use `zones_from_geojson` to read a whole `FeatureCollection`. Zones without
 declared service hours are always open.
 
+### Coverage lookups
+
+`ZoneIndex` prepares the polygons once and buckets them into a grid, so asking
+which zones reach an address does not walk the whole catalogue. Coverage may
+overlap, so a lookup returns every match in the order the zones were given.
+
+```python
+from delivery_zones import ZoneIndex
+
+index = ZoneIndex.from_geojson(feature_collection)
+
+index.zones_containing((13.40, 52.52))   # every zone reaching the address
+index.covers((13.40, 52.52))             # True if at least one does
+```
+
+A position is a GeoJSON pair (longitude first) or a `Point`. For a one-off
+check against a single polygon there is `point_in_polygon`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
