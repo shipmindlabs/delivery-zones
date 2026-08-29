@@ -137,7 +137,9 @@ class ServiceHours:
 class Zone:
     """A delivery area: where it reaches, who serves it and on what terms.
 
-    A zone with no declared service hours is treated as always open.
+    A zone with no declared service hours is treated as always open. Where
+    coverage overlaps, ``priority`` ranks the zone against its neighbours: the
+    higher number wins, and a zone that declares nothing sits at ``0``.
     """
 
     zone_id: str
@@ -145,6 +147,7 @@ class Zone:
     fee_tier: str
     polygons: tuple[Polygon, ...]
     service_hours: ServiceHours | None = None
+    priority: int = 0
 
     def __post_init__(self) -> None:
         for name in ("zone_id", "store_id", "fee_tier"):
@@ -154,6 +157,8 @@ class Zone:
         object.__setattr__(self, "polygons", tuple(self.polygons))
         if not self.polygons:
             raise ZoneError(f"zone {self.zone_id!r} covers no polygons")
+        if isinstance(self.priority, bool) or not isinstance(self.priority, int):
+            raise ZoneError(f"priority must be an integer, got {self.priority!r}")
 
     def is_open_at(self, moment: datetime) -> bool:
         return self.service_hours is None or self.service_hours.covers(moment)
@@ -163,7 +168,8 @@ class Zone:
         """Build a zone from a GeoJSON Feature.
 
         ``properties`` must carry ``store_id`` and ``fee_tier``; ``zone_id``
-        falls back to the feature's ``id`` and ``service_hours`` is optional.
+        falls back to the feature's ``id``, while ``service_hours`` and
+        ``priority`` are optional.
         """
         if not isinstance(feature, Mapping):
             raise ZoneError(f"feature must be a GeoJSON mapping, got {type(feature).__name__}")
@@ -185,6 +191,7 @@ class Zone:
             fee_tier=properties["fee_tier"],
             polygons=polygons_from_geojson(geometry),
             service_hours=None if hours is None else ServiceHours.from_sequence(hours),
+            priority=properties.get("priority", 0),
         )
 
 

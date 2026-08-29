@@ -49,6 +49,7 @@ zone = Zone.from_geojson(
         "properties": {
             "store_id": "store-1",
             "fee_tier": "standard",
+            "priority": 10,
             "service_hours": [
                 {"weekday": "mon", "opens": "09:00", "closes": "21:00"}
             ],
@@ -59,6 +60,7 @@ zone = Zone.from_geojson(
 zone.zone_id                                     # "downtown"
 zone.store_id                                    # "store-1"
 zone.fee_tier                                    # "standard"
+zone.priority                                    # 10, or 0 when undeclared
 zone.is_open_at(datetime(2026, 8, 24, 10, 0))    # True, a Monday morning
 ```
 
@@ -82,6 +84,31 @@ index.covers((13.40, 52.52))             # True if at least one does
 
 A position is a GeoJSON pair (longitude first) or a `Point`. For a one-off
 check against a single polygon there is `point_in_polygon`.
+
+### Overlapping zones
+
+A city hub and a store's own ring routinely cover the same street, and which
+one serves the address is a business rule. Pass a policy to say which:
+
+```python
+from delivery_zones import TieBreak, by_priority, by_smallest_area
+
+index.zones_containing(address)                                    # all matches
+index.zones_containing(address, policy=by_priority(TieBreak.FIRST))
+index.zones_containing(address, policy=by_smallest_area(TieBreak.RAISE))
+```
+
+`by_priority` ranks on the zone's `priority` property, higher first;
+`by_smallest_area` prefers the tightest coverage, which is usually the most
+specific zone. Neither invents a winner when the leaders rank equally: the
+tie-break is a required argument, and `TieBreak.FIRST` keeps the first zone in
+declaration order, `TieBreak.ALL` returns every leader and `TieBreak.RAISE`
+raises `AmbiguousCoverage` so a bad catalogue surfaces instead of routing at
+random.
+
+Every policy returns a tuple, empty when nothing covers the address. A policy
+is just a callable from matched zones to chosen ones, so a rule of your own —
+fee tier, open-right-now, nearest store — fits the same slot.
 
 ## License
 

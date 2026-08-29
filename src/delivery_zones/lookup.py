@@ -16,6 +16,7 @@ from math import isqrt
 from typing import Any
 
 from .geometry import BoundingBox, Point, Polygon
+from .resolution import ZonePolicy, all_matches
 from .zones import Zone, zones_from_geojson
 
 __all__ = ["ZoneIndex", "point_in_polygon"]
@@ -112,8 +113,9 @@ def _cell_axis(value: float, low: float, high: float, side: int) -> int:
 class ZoneIndex:
     """Which zones cover an address, answered from prepared geometry.
 
-    Zones may overlap, so a lookup returns every match in the order the zones
-    were given rather than a single winner.
+    Zones may overlap, so a lookup collects every match in the order the zones
+    were given and hands the result to a policy. The default policy keeps all
+    of them: picking a winner is the caller's decision, not the index's.
     """
 
     __slots__ = ("_zones", "_polygons", "_bounds", "_side", "_cells")
@@ -138,8 +140,17 @@ class ZoneIndex:
     def zones(self) -> tuple[Zone, ...]:
         return self._zones
 
-    def zones_containing(self, point: Point | Sequence[float]) -> tuple[Zone, ...]:
-        """Every zone covering the address, in the order the zones were given."""
+    def zones_containing(
+        self,
+        point: Point | Sequence[float],
+        *,
+        policy: ZonePolicy = all_matches,
+    ) -> tuple[Zone, ...]:
+        """Zones covering the address, narrowed by *policy*.
+
+        Matches reach the policy in the order the zones were given, so a policy
+        that ranks on declaration order gets a stable input.
+        """
         target = _as_point(point)
         found: list[Zone] = []
         seen: set[int] = set()
@@ -149,7 +160,7 @@ class ZoneIndex:
             if prepared.contains(target):
                 seen.add(position)
                 found.append(self._zones[position])
-        return tuple(found)
+        return policy(found)
 
     def covers(self, point: Point | Sequence[float]) -> bool:
         """Whether at least one zone reaches the address."""

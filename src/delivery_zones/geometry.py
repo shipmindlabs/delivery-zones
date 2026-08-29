@@ -93,6 +93,15 @@ class Polygon:
         object.__setattr__(self, "holes", tuple(_ring(hole, "hole") for hole in self.holes))
         object.__setattr__(self, "bbox", BoundingBox.around(self.exterior))
 
+    @property
+    def area(self) -> float:
+        """Planar area in square degrees, holes removed, winding ignored.
+
+        Degrees do not measure ground area, but they order nearby polygons the
+        same way metres would, which is what ranking overlaps needs.
+        """
+        return _ring_area(self.exterior) - sum(_ring_area(hole) for hole in self.holes)
+
     @classmethod
     def from_rings(cls, rings: Any) -> "Polygon":
         """Build a polygon from GeoJSON rings: the first one bounds, the rest cut."""
@@ -116,6 +125,16 @@ def _ring(coordinates: Any, role: str) -> tuple[Point, ...]:
     if len(points) < 3:
         raise GeometryError(f"{role} ring needs at least three distinct positions")
     return points
+
+
+def _ring_area(points: Sequence[Point]) -> float:
+    """Shoelace area of a closed ring, taken positive."""
+    total = 0.0
+    previous = points[-1]
+    for current in points:
+        total += previous.lon * current.lat - current.lon * previous.lat
+        previous = current
+    return abs(total) / 2.0
 
 
 def polygons_from_geojson(geometry: Mapping[str, Any]) -> tuple[Polygon, ...]:
