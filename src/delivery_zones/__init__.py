@@ -1,5 +1,13 @@
 """Delivery coverage by polygons."""
 
+from .coverage import (
+    CoverageError,
+    CoverageGap,
+    CoverageReport,
+    scan_coverage,
+    uncovered_points,
+    zones_envelope,
+)
 from .geometry import (
     BoundingBox,
     GeometryError,
@@ -24,6 +32,9 @@ __version__ = "0.1.0"
 __all__ = [
     "AmbiguousCoverage",
     "BoundingBox",
+    "CoverageError",
+    "CoverageGap",
+    "CoverageReport",
     "GeometryError",
     "Point",
     "Polygon",
@@ -40,6 +51,9 @@ __all__ = [
     "by_smallest_area",
     "point_in_polygon",
     "polygons_from_geojson",
+    "scan_coverage",
+    "uncovered_points",
     "zone_area",
+    "zones_envelope",
     "zones_from_geojson",
 ]

@@ -110,6 +110,45 @@ Every policy returns a tuple, empty when nothing covers the address. A policy
 is just a callable from matched zones to chosen ones, so a rule of your own —
 fee tier, open-right-now, nearest store — fits the same slot.
 
+### Coverage checks and holes
+
+Overlaps are visible in a lookup; the places no zone reaches are not. A scan
+walks a lattice over the served area, asks the index about every position and
+groups the misses, so a strip between two rings — or a hole cut around a lake —
+fails a test run instead of an order.
+
+```python
+from delivery_zones import BoundingBox, scan_coverage, uncovered_points
+
+report = scan_coverage(index, spacing=0.002)
+
+assert report.is_complete, report.describe()
+
+report.uncovered                 # sampled positions no zone reaches
+report.gaps[0].size              # how many of them this gap holds
+report.gaps[0].representative    # a position inside it, ready to paste into a bug
+report.gaps[0].bbox              # where to look on a map
+```
+
+`spacing` is in degrees and decides what the scan can see: a gap narrower than
+the lattice slips between samples, while a fine spacing over a whole city costs
+many lookups, which is why `max_samples` refuses a scan larger than a million
+positions. By default the scan covers the envelope of the indexed zones; pass
+`area=BoundingBox(...)` to check a district the catalogue is supposed to reach
+but may have forgotten. A sample landing exactly on a zone border may fall
+either way, so prefer a spacing that does not align with your rings.
+
+For addresses you already have — a delivery history, a list of test
+addresses — `uncovered_points(index, positions)` returns those that no zone
+reaches, in the order given.
+
+## Development
+
+```bash
+pip install -e ".[test]"
+python -m pytest
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
