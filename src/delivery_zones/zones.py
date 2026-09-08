@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, time
 from typing import Any
 
-from .geometry import Polygon, polygons_from_geojson
+from .geometry import Point, Polygon, polygons_from_geojson
 
 __all__ = [
     "ServiceHours",
@@ -140,6 +140,8 @@ class Zone:
     A zone with no declared service hours is treated as always open. Where
     coverage overlaps, ``priority`` ranks the zone against its neighbours: the
     higher number wins, and a zone that declares nothing sits at ``0``.
+    ``store_location`` is where the serving store stands; distance hints need
+    it, everything else works without it.
     """
 
     zone_id: str
@@ -148,6 +150,7 @@ class Zone:
     polygons: tuple[Polygon, ...]
     service_hours: ServiceHours | None = None
     priority: int = 0
+    store_location: Point | None = None
 
     def __post_init__(self) -> None:
         for name in ("zone_id", "store_id", "fee_tier"):
@@ -159,6 +162,10 @@ class Zone:
             raise ZoneError(f"zone {self.zone_id!r} covers no polygons")
         if isinstance(self.priority, bool) or not isinstance(self.priority, int):
             raise ZoneError(f"priority must be an integer, got {self.priority!r}")
+        if self.store_location is not None and not isinstance(self.store_location, Point):
+            object.__setattr__(
+                self, "store_location", Point.from_coordinates(self.store_location)
+            )
 
     def is_open_at(self, moment: datetime) -> bool:
         return self.service_hours is None or self.service_hours.covers(moment)
@@ -168,8 +175,8 @@ class Zone:
         """Build a zone from a GeoJSON Feature.
 
         ``properties`` must carry ``store_id`` and ``fee_tier``; ``zone_id``
-        falls back to the feature's ``id``, while ``service_hours`` and
-        ``priority`` are optional.
+        falls back to the feature's ``id``, while ``service_hours``,
+        ``priority`` and ``store_location`` are optional.
         """
         if not isinstance(feature, Mapping):
             raise ZoneError(f"feature must be a GeoJSON mapping, got {type(feature).__name__}")
@@ -192,6 +199,7 @@ class Zone:
             polygons=polygons_from_geojson(geometry),
             service_hours=None if hours is None else ServiceHours.from_sequence(hours),
             priority=properties.get("priority", 0),
+            store_location=properties.get("store_location"),
         )
 
 

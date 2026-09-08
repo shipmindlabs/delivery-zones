@@ -50,6 +50,7 @@ zone = Zone.from_geojson(
             "store_id": "store-1",
             "fee_tier": "standard",
             "priority": 10,
+            "store_location": [13.39, 52.52],
             "service_hours": [
                 {"weekday": "mon", "opens": "09:00", "closes": "21:00"}
             ],
@@ -61,6 +62,7 @@ zone.zone_id                                     # "downtown"
 zone.store_id                                    # "store-1"
 zone.fee_tier                                    # "standard"
 zone.priority                                    # 10, or 0 when undeclared
+zone.store_location                              # Point(13.39, 52.52), or None
 zone.is_open_at(datetime(2026, 8, 24, 10, 0))    # True, a Monday morning
 ```
 
@@ -108,7 +110,8 @@ random.
 
 Every policy returns a tuple, empty when nothing covers the address. A policy
 is just a callable from matched zones to chosen ones, so a rule of your own —
-fee tier, open-right-now, nearest store — fits the same slot.
+fee tier, open right now — fits the same slot; `ranked_by` builds one from any
+measure of a zone.
 
 ### Coverage checks and holes
 
@@ -141,6 +144,45 @@ either way, so prefer a spacing that does not align with your rings.
 For addresses you already have — a delivery history, a list of test
 addresses — `uncovered_points(index, positions)` returns those that no zone
 reaches, in the order given.
+
+### Distance and service-time hints
+
+A lookup says which stores reach an address; dispatch also asks how far away
+they are. Give a zone a `store_location` and every match carries a straight-line
+distance to it.
+
+```python
+from delivery_zones import constant_speed, nearest_store, service_hints
+
+hints = service_hints(index, address)
+hints[0].zone.store_id
+hints[0].distance_m              # great-circle metres from store to address
+
+nearest_store(index, address)    # the closest hint, or None if nothing covers it
+
+hints = service_hints(index, address, travel_time=constant_speed(22.0, detour=1.35))
+hints[0].travel_time_s
+```
+
+The distance is a line over the ground, not a route along it: it knows nothing
+about rivers, one-way streets or traffic, and a store two blocks away across a
+railway can still be a ten-minute ride. Travel time is therefore a hook rather
+than a calculation — pass any callable taking `(store, address,
+straight_line_metres)` and returning seconds, and a routing service answers in
+the package's place. `constant_speed` is the placeholder for tests and rough
+fee tiers: it stretches the straight line by a detour factor and divides by a
+fixed speed.
+
+Ranking on distance fits the policy slot as well:
+
+```python
+from delivery_zones import TieBreak, by_nearest_store
+
+index.zones_containing(address, policy=by_nearest_store(address, TieBreak.FIRST))
+```
+
+A zone that declares no `store_location` cannot be measured against, and asking
+for its distance raises `DistanceError` instead of inventing a position.
 
 ## Development
 

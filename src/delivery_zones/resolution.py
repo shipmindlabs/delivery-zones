@@ -21,6 +21,7 @@ __all__ = [
     "all_matches",
     "by_priority",
     "by_smallest_area",
+    "ranked_by",
     "zone_area",
 ]
 
@@ -59,15 +60,19 @@ def zone_area(zone: Zone) -> float:
 
 def by_priority(tie_break: TieBreak) -> ZonePolicy:
     """Prefer the highest ``priority``; zones without one sit at ``0``."""
-    return _ranked_by(lambda zone: float(-zone.priority), tie_break)
+    return ranked_by(lambda zone: float(-zone.priority), tie_break)
 
 
 def by_smallest_area(tie_break: TieBreak) -> ZonePolicy:
     """Prefer the tightest coverage, usually the most specific zone."""
-    return _ranked_by(zone_area, tie_break)
+    return ranked_by(zone_area, tie_break)
 
 
-def _ranked_by(rank: Callable[[Zone], float], tie_break: TieBreak) -> ZonePolicy:
+def ranked_by(rank: Callable[[Zone], float], tie_break: TieBreak) -> ZonePolicy:
+    """Build a policy keeping the zones with the lowest *rank*.
+
+    Lower wins, so a measure that should prefer larger values negates itself.
+    """
     if not isinstance(tie_break, TieBreak):
         raise TypeError(f"tie_break must be a TieBreak, got {tie_break!r}")
 
