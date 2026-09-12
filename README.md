@@ -113,6 +113,22 @@ is just a callable from matched zones to chosen ones, so a rule of your own —
 fee tier, open right now — fits the same slot; `ranked_by` builds one from any
 measure of a zone.
 
+### Shapes the world actually has
+
+Concave zones and holes are honoured as written: only the envelope test is
+rectangular, so a notch around a park or a lake cut out of the middle stays
+uncovered, and an island inside that lake is served again as a second polygon
+of the same zone. Borders are half-open — a position on a zone's southern or
+western edge is inside it, on its northern or eastern edge outside — so two
+zones meeting along a street do not both claim the addresses on it.
+
+Coverage is planar: rings are measured in degrees and nothing wraps. A zone
+reaching across the antimeridian has to be split into two polygons at ±180, the
+way GeoJSON asks; a ring written straight from 179 to -179 covers the other
+half of the planet instead, and the envelope of such a catalogue spans the
+globe. Distances are unaffected, since `haversine_metres` reads the short way
+round.
+
 ### Coverage checks and holes
 
 Overlaps are visible in a lookup; the places no zone reaches are not. A scan
