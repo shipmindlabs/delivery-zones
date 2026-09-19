@@ -66,8 +66,37 @@ zone.store_location                              # Point(13.39, 52.52), or None
 zone.is_open_at(datetime(2026, 8, 24, 10, 0))    # True, a Monday morning
 ```
 
-Use `zones_from_geojson` to read a whole `FeatureCollection`. Zones without
-declared service hours are always open.
+### Loading a catalogue
+
+A catalogue is usually a `FeatureCollection` on disk or from a service. Read it
+with `zones_from_geojson`, or hand the document straight to the index:
+
+```python
+import json
+
+from delivery_zones import ZoneIndex, zones_from_geojson
+
+with open("zones.geojson", encoding="utf-8") as handle:
+    document = json.load(handle)
+
+zones = zones_from_geojson(document)     # a tuple of Zone, in file order
+index = ZoneIndex(zones)                 # or ZoneIndex.from_geojson(document)
+
+len(index)                               # how many zones it holds
+index.zones                              # them, in the order they were given
+```
+
+`properties` must carry `store_id` and `fee_tier`; `zone_id` falls back to the
+feature's `id`, and `service_hours`, `priority` and `store_location` are
+optional. Zones without declared service hours are always open. A feature that
+is missing one of the required properties, or whose ring has fewer than three
+positions, raises `ZoneError` or `GeometryError` naming what is wrong — a bad
+entry fails the load instead of quietly dropping out of coverage.
+
+Declaration order is kept end to end: it decides what a lookup returns and what
+`TieBreak.FIRST` means, so the file is the tie-breaker of last resort. An index
+is a snapshot that prepares every ring once; when the catalogue changes, build a
+new one rather than mutating this one.
 
 ### Coverage lookups
 
@@ -76,16 +105,37 @@ which zones reach an address does not walk the whole catalogue. Coverage may
 overlap, so a lookup returns every match in the order the zones were given.
 
 ```python
-from delivery_zones import ZoneIndex
-
-index = ZoneIndex.from_geojson(feature_collection)
-
 index.zones_containing((13.40, 52.52))   # every zone reaching the address
 index.covers((13.40, 52.52))             # True if at least one does
 ```
 
 A position is a GeoJSON pair (longitude first) or a `Point`. For a one-off
 check against a single polygon there is `point_in_polygon`.
+
+### Who delivers to this address
+
+The question a dispatcher actually asks is answered in three steps: which zones
+reach the address, which of them is supposed to win, and how far its store is.
+
+```python
+from delivery_zones import TieBreak, by_priority, nearest_store
+
+address = (13.40, 52.52)
+
+serving = index.zones_containing(address, policy=by_priority(TieBreak.FIRST))
+if not serving:
+    ...                                  # nobody covers it; refuse the order
+
+zone = serving[0]
+zone.store_id                            # who takes it
+zone.fee_tier                            # what it costs
+zone.is_open_at(datetime.now())          # whether they take it now
+
+nearest_store(index, address).distance_m # how far the closest store is
+```
+
+The library answers the first step and gives you the vocabulary for the second;
+the rule itself stays yours.
 
 ### Overlapping zones
 
@@ -199,6 +249,24 @@ index.zones_containing(address, policy=by_nearest_store(address, TieBreak.FIRST)
 
 A zone that declares no `store_location` cannot be measured against, and asking
 for its distance raises `DistanceError` instead of inventing a position.
+
+## What this library is not
+
+It answers where a catalogue of polygons reaches, and stops there.
+
+- **Not a geocoder.** Lookups take coordinates. Turning "Torstraße 1" into a
+  longitude and latitude happens before the first call.
+- **Not a routing engine.** Distances are great-circle lines; travel time is a
+  hook for a service that knows the streets.
+- **Not a GIS toolkit.** There is no union, intersection, buffering or
+  simplification of polygons, and no reprojection: everything is WGS84 degrees,
+  as GeoJSON delivers them. Editing zone shapes belongs in whatever draws them.
+- **Not spherical.** Point-in-polygon is planar, so rings are straight in
+  degrees rather than great circles and nothing wraps at the antimeridian. Over
+  a city the difference is invisible; over a continent-sized zone it is not.
+- **Not a store.** Zones live in memory for the life of the process. Loading,
+  caching and reloading a changed catalogue are the caller's job — and with
+  immutable zones, reloading is just building a new index.
 
 ## Development
 
