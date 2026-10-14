@@ -5,11 +5,17 @@ ring, and both entries are correct. Which one serves the address is a business
 decision, so this module offers policies instead of a default. Every ranking
 policy also demands a tie-break, because two zones ranking equally is a normal
 outcome and quietly keeping the first one hides it.
+
+Policies compose, and the order is itself part of the rule: a filter such as
+``open_at`` placed ahead of a ranking keeps a closed zone from winning on
+priority, while the same filter behind the ranking only discards the winner it
+already elected.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from enum import Enum
 
 from .zones import Zone
@@ -21,7 +27,9 @@ __all__ = [
     "all_matches",
     "by_priority",
     "by_smallest_area",
+    "open_at",
     "ranked_by",
+    "then",
     "zone_area",
 ]
 
@@ -66,6 +74,42 @@ def by_priority(tie_break: TieBreak) -> ZonePolicy:
 def by_smallest_area(tie_break: TieBreak) -> ZonePolicy:
     """Prefer the tightest coverage, usually the most specific zone."""
     return ranked_by(zone_area, tie_break)
+
+
+def open_at(moment: datetime) -> ZonePolicy:
+    """Keep the zones accepting orders at *moment*.
+
+    A zone that declares no service hours is always open and always passes.
+    Nothing is elected here, so an address whose zones are all closed comes
+    back as the empty tuple that already reads as nobody serving it.
+    """
+    if not isinstance(moment, datetime):
+        raise TypeError(f"moment must be a datetime, got {moment!r}")
+
+    def policy(zones: Sequence[Zone]) -> tuple[Zone, ...]:
+        return tuple(zone for zone in zones if zone.is_open_at(moment))
+
+    return policy
+
+
+def then(*policies: ZonePolicy) -> ZonePolicy:
+    """Chain policies, feeding each result to the next.
+
+    Order decides the rule: ``then(open_at(now), by_priority(TieBreak.FIRST))``
+    ranks only the zones that are open, while the reverse ranks first and may
+    discard its own winner. Chaining nothing keeps every match.
+    """
+    for stage in policies:
+        if not callable(stage):
+            raise TypeError(f"every stage must be a policy callable, got {stage!r}")
+
+    def policy(zones: Sequence[Zone]) -> tuple[Zone, ...]:
+        chosen = tuple(zones)
+        for stage in policies:
+            chosen = tuple(stage(chosen))
+        return chosen
+
+    return policy
 
 
 def ranked_by(rank: Callable[[Zone], float], tie_break: TieBreak) -> ZonePolicy:

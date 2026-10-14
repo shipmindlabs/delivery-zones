@@ -163,6 +163,28 @@ is just a callable from matched zones to chosen ones, so a rule of your own —
 fee tier, open right now — fits the same slot; `ranked_by` builds one from any
 measure of a zone.
 
+### Composing a filter and a ranking
+
+Policies chain: `open_at(moment)` keeps the zones whose service hours cover the
+moment, and `then(...)` hands each result to the next stage.
+
+```python
+from datetime import datetime
+
+from delivery_zones import TieBreak, by_priority, open_at, then
+
+serving = index.zones_containing(
+    address, policy=then(open_at(datetime.now()), by_priority(TieBreak.FIRST))
+)
+```
+
+The order is the rule. A filter ahead of the ranking means a closed zone never
+wins on priority: the hub that shuts at noon steps aside and the smaller ring
+that is still open takes the order. Behind the ranking the same filter only
+discards the winner it already elected, which leaves the empty tuple that reads
+the same way as nobody covering the address at all — so refuse the order rather
+than looking further down the list.
+
 ### Shapes the world actually has
 
 Concave zones and holes are honoured as written: only the envelope test is
