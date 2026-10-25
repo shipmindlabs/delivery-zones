@@ -87,9 +87,10 @@ index.zones                              # them, in the order they were given
 ```
 
 `properties` must carry `store_id` and `fee_tier`; `zone_id` falls back to the
-feature's `id`, and `service_hours`, `priority` and `store_location` are
-optional. Zones without declared service hours are always open. A feature that
-is missing one of the required properties, or whose ring has fewer than three
+feature's `id`, and `service_hours`, `timezone`, `priority` and
+`store_location` are optional. Zones without declared service hours are always
+open, and a `timezone` has nothing to apply to without them. A feature that is
+missing one of the required properties, or whose ring has fewer than three
 positions, raises `ZoneError` or `GeometryError` naming what is wrong — a bad
 entry fails the load instead of quietly dropping out of coverage.
 
@@ -184,6 +185,32 @@ that is still open takes the order. Behind the ranking the same filter only
 discards the winner it already elected, which leaves the empty tuple that reads
 the same way as nobody covering the address at all — so refuse the order rather
 than looking further down the list.
+
+### Hours on the store's clock
+
+A window written as 18:00–02:00 belongs to the store, not to the machine
+asking. Name an IANA `timezone` next to the hours and the moment is converted
+into it before its weekday and clock are read:
+
+```python
+from datetime import datetime, timezone
+
+"properties": {
+    "store_id": "store-1",
+    "fee_tier": "standard",
+    "timezone": "Europe/Berlin",
+    "service_hours": [{"weekday": "mon", "opens": "18:00", "closes": "02:00"}],
+}
+
+zone.is_open_at(datetime(2026, 8, 24, 23, 30, tzinfo=timezone.utc))   # True
+```
+
+Berlin reads that instant as Tuesday 01:30, still inside the Monday window that
+runs past midnight, and daylight saving is handled by the zone rather than by a
+fixed offset. Converting needs a real instant, so a zoned zone refuses a naive
+datetime with `ZoneError` instead of assuming the caller sits in the same city.
+Hours without a `timezone` keep reading the datetime exactly as it arrives —
+wall clock, whatever it carries — which is what a single-city catalogue wants.
 
 ### Shapes the world actually has
 

@@ -81,7 +81,9 @@ def open_at(moment: datetime) -> ZonePolicy:
 
     A zone that declares no service hours is always open and always passes.
     Nothing is elected here, so an address whose zones are all closed comes
-    back as the empty tuple that already reads as nobody serving it.
+    back as the empty tuple that already reads as nobody serving it. Zones
+    whose hours name a timezone read the moment on the store's clock and raise
+    ``ZoneError`` for a naive one.
     """
     if not isinstance(moment, datetime):
         raise TypeError(f"moment must be a datetime, got {moment!r}")

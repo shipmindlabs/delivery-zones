@@ -3,14 +3,18 @@
 A zone answers what a dispatcher asks about an address: which store serves it,
 what the delivery costs and whether the area is open right now. Zones are read
 from GeoJSON features and kept in memory, so no database is involved.
+
+Opening hours belong to the store rather than to the process asking, so service
+hours may name an IANA timezone and are read on that clock.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import datetime, time
+from dataclasses import dataclass, field
+from datetime import datetime, time, tzinfo
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .geometry import Point, Polygon, polygons_from_geojson
 
@@ -67,6 +71,17 @@ def _parse_clock(value: Any, role: str) -> time:
     raise ZoneError(f"{role} must be an ISO time such as '09:00', got {value!r}")
 
 
+def _parse_timezone(value: Any) -> tzinfo:
+    if not isinstance(value, str) or not value.strip():
+        raise ZoneError(
+            f"timezone must be an IANA name such as 'Europe/Berlin', got {value!r}"
+        )
+    try:
+        return ZoneInfo(value)
+    except (ValueError, ZoneInfoNotFoundError):
+        raise ZoneError(f"unknown timezone: {value!r}") from None
+
+
 @dataclass(frozen=True, slots=True)
 class ServiceWindow:
     """One opening interval, half-open on the closing side. Monday is 0.
@@ -114,32 +129,67 @@ class ServiceWindow:
 
 @dataclass(frozen=True, slots=True)
 class ServiceHours:
-    """The windows during which a zone accepts orders."""
+    """The windows during which a zone accepts orders.
+
+    A store opens on its own clock. When ``timezone`` names an IANA zone such
+    as ``"Europe/Berlin"``, a moment is converted into it before its weekday
+    and clock are read, and a naive moment is refused instead of being assumed
+    to be the store's local time. Without a timezone the moment is read exactly
+    as it arrives, which is what a single-city catalogue on wall-clock
+    datetimes wants.
+    """
 
     windows: tuple[ServiceWindow, ...]
+    timezone: str | None = None
+    tz: tzinfo | None = field(init=False, compare=False, repr=False, default=None)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "windows", tuple(self.windows))
         if not self.windows:
             raise ZoneError("service hours need at least one window")
+        if self.timezone is not None:
+            object.__setattr__(self, "tz", _parse_timezone(self.timezone))
+
+    def local(self, moment: datetime) -> datetime:
+        """*moment* on the store's clock, unchanged when no timezone is named."""
+        if not isinstance(moment, datetime):
+            raise ZoneError(f"moment must be a datetime, got {moment!r}")
+        if self.tz is None:
+            return moment
+        if moment.utcoffset() is None:
+            raise ZoneError(
+                f"service hours are declared in {self.timezone!r}, so the moment "
+                f"must carry a timezone; got the naive {moment!r}"
+            )
+        return moment.astimezone(self.tz)
 
     def covers(self, moment: datetime) -> bool:
-        return any(window.covers(moment) for window in self.windows)
+        reading = self.local(moment)
+        return any(window.covers(reading) for window in self.windows)
 
     @classmethod
-    def from_sequence(cls, data: Iterable[Mapping[str, Any]]) -> "ServiceHours":
+    def from_sequence(
+        cls,
+        data: Iterable[Mapping[str, Any]],
+        *,
+        timezone: str | None = None,
+    ) -> "ServiceHours":
         if isinstance(data, (str, bytes, Mapping)) or not isinstance(data, Iterable):
             raise ZoneError(f"service hours must be a list of windows, got {data!r}")
-        return cls(tuple(ServiceWindow.from_mapping(item) for item in data))
+        return cls(
+            tuple(ServiceWindow.from_mapping(item) for item in data),
+            timezone=timezone,
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class Zone:
     """A delivery area: where it reaches, who serves it and on what terms.
 
-    A zone with no declared service hours is treated as always open. Where
-    coverage overlaps, ``priority`` ranks the zone against its neighbours: the
-    higher number wins, and a zone that declares nothing sits at ``0``.
+    A zone with no declared service hours is treated as always open, and hours
+    that name a timezone are read on the store's clock. Where coverage
+    overlaps, ``priority`` ranks the zone against its neighbours: the higher
+    number wins, and a zone that declares nothing sits at ``0``.
     ``store_location`` is where the serving store stands; distance hints need
     it, everything else works without it.
     """
@@ -176,7 +226,7 @@ class Zone:
 
         ``properties`` must carry ``store_id`` and ``fee_tier``; ``zone_id``
         falls back to the feature's ``id``, while ``service_hours``,
-        ``priority`` and ``store_location`` are optional.
+        ``timezone``, ``priority`` and ``store_location`` are optional.
         """
         if not isinstance(feature, Mapping):
             raise ZoneError(f"feature must be a GeoJSON mapping, got {type(feature).__name__}")
@@ -197,7 +247,13 @@ class Zone:
             store_id=properties["store_id"],
             fee_tier=properties["fee_tier"],
             polygons=polygons_from_geojson(geometry),
-            service_hours=None if hours is None else ServiceHours.from_sequence(hours),
+            service_hours=(
+                None
+                if hours is None
+                else ServiceHours.from_sequence(
+                    hours, timezone=properties.get("timezone")
+                )
+            ),
             priority=properties.get("priority", 0),
             store_location=properties.get("store_location"),
         )
