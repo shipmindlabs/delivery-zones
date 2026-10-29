@@ -1,9 +1,11 @@
 """Delivery coverage by polygons."""
 
 from .coverage import (
+    AmbiguityReport,
     CoverageError,
     CoverageGap,
     CoverageReport,
+    scan_ambiguity,
     scan_coverage,
     uncovered_points,
     zones_envelope,
@@ -45,6 +47,7 @@ from .zones import ServiceHours, ServiceWindow, Zone, ZoneError, zones_from_geoj
 __version__ = "0.1.0"
 
 __all__ = [
+    "AmbiguityReport",
     "AmbiguousCoverage",
     "BoundingBox",
     "CoverageError",
@@ -76,6 +79,7 @@ __all__ = [
     "point_in_polygon",
     "polygons_from_geojson",
     "ranked_by",
+    "scan_ambiguity",
     "scan_coverage",
     "service_hints",
     "serving_store",

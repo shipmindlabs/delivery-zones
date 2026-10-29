@@ -260,6 +260,34 @@ For addresses you already have — a delivery history, a list of test
 addresses — `uncovered_points(index, positions)` returns those that no zone
 reaches, in the order given.
 
+### Where no rule picks a winner
+
+The mirror image of a hole is an overlap the rule cannot settle: two rings of
+equal priority covering the same street hand the order to whichever was
+declared first. `scan_ambiguity` walks the same lattice with a policy and
+groups the positions where it raises `AmbiguousCoverage`:
+
+```python
+from delivery_zones import TieBreak, by_priority, scan_ambiguity
+
+report = scan_ambiguity(index, by_priority(TieBreak.RAISE), spacing=0.002)
+
+assert report.is_decided, report.describe()
+
+report.ambiguous                 # sampled positions with no winner
+report.gaps[0].representative    # an address the catalogue cannot route
+report.gaps[0].bbox              # the stretch of map it spans
+report.zone_ids                  # the zones that rank equally somewhere
+```
+
+`spacing`, `area` and `max_samples` mean what they mean for `scan_coverage`.
+Only `AmbiguousCoverage` is collected: an address no zone reaches leaves the
+policy nothing to rank and belongs to a coverage scan, while anything else a
+policy raises — a zone without a `store_location`, say — travels on to the
+caller. Pass the policy you route with, and a tie your production rule hides
+under `TieBreak.FIRST` becomes visible by scanning the same catalogue with
+`TieBreak.RAISE`.
+
 ### Distance and service-time hints
 
 A lookup says which stores reach an address; dispatch also asks how far away
